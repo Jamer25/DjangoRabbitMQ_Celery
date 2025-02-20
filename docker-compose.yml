@@ -1,0 +1,72 @@
+
+services:
+ 
+  db:
+    image: postgres:15.10
+    restart: always 
+    container_name: postgresql
+            
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment: 
+      - DATABASE_HOST=127.0.0.1
+      - POSTGRES_DB=my_database
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    ports:
+      - "5432:5432"
+        
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=jamer.omar.asencio.urcia@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:5050"
+    depends_on:
+      - db
+  
+
+        
+  web:
+    build: .
+    container_name: django
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/code
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_NAME=my_database
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    depends_on:
+      - db
+      - rabbitmq
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # Puerto AMQP
+      - "15672:15672" # Interfaz de administración
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=some_secret_cookie
+    restart: always
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  celery:
+    build: .
+    container_name: celery_worker
+    command: ["/code/wait-for-it.sh", "rabbitmq:5672", "--", "celery", "-A", "django_docker", "worker", "--loglevel=info"]
+    volumes:
+      - .:/code
+    depends_on:
+      - rabbitmq
+      - db
+      - web
